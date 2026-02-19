@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const { getDb, dbRun, dbGet, persistDb, generateAccountNumber } = require('../database/db');
+const { getDb, dbRun, dbGet, persistDb, generateAccountNumber, isPg } = require('../database/db');
 const { generateToken } = require('../middleware/auth');
 
 // ─── POST /api/register ──────────────────────────────────────
@@ -36,9 +36,8 @@ router.post('/register', async (req, res) => {
 
         let userId;
 
-        if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+        if (isPg) {
             // PostgreSQL: use RETURNING id
-            const { Pool } = require('pg');
             const result = await db.query(
                 'INSERT INTO users (username, phone, password, balance, account_number) VALUES ($1, $2, $3, $4, $5) RETURNING id',
                 [username.trim(), phone.trim(), hashedPassword, 0.0, accountNumber]
@@ -46,18 +45,21 @@ router.post('/register', async (req, res) => {
             userId = result.rows[0].id;
         } else {
             // SQLite
-            db.run(
+            const result = await dbRun(db,
                 'INSERT INTO users (username, phone, password, balance, account_number) VALUES (?, ?, ?, ?, ?)',
                 [username.trim(), phone.trim(), hashedPassword, 0.0, accountNumber]
             );
-            const idRow = await dbGet(db, 'SELECT last_insert_rowid() AS id');
-            userId = idRow.id;
+            userId = result.lastID;
+        }
+
+        if (!userId) {
+            throw new Error('Failed to retrieve new user ID');
         }
 
         // Generate JWT
         const token = generateToken({ id: userId, phone: phone.trim(), username: username.trim() });
         await dbRun(db, 'UPDATE users SET jwt_token = ? WHERE id = ?', [token, userId]);
-        persistDb();
+        persistDb(db);
 
         return res.status(201).json({
             success: true,
@@ -93,7 +95,7 @@ router.post('/login', async (req, res) => {
 
         const token = generateToken({ id: user.id, phone: user.phone, username: user.username });
         await dbRun(db, 'UPDATE users SET jwt_token = ? WHERE id = ?', [token, user.id]);
-        persistDb();
+        persistDb(db);
 
         res.cookie('authToken', token, {
             httpOnly: true,
@@ -122,3 +124,4 @@ router.post('/logout', (req, res) => {
 });
 
 module.exports = router;
+

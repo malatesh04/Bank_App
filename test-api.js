@@ -63,6 +63,11 @@ async function run() {
     }
 
     {
+        const r = await request('/register', 'POST', { username: 'Vikram Singh', phone: '7776665554', password: 'Password123!', confirmPassword: 'Password123!' });
+        check('Register User 3 (Vikram)', r.status, r.body);
+    }
+
+    {
         const r = await request('/register', 'POST', { username: 'Dup', phone: '9876543210', password: 'pass', confirmPassword: 'pass' });
         check('Reject duplicate phone (short pwd)', r.status, r.body, false);
     }

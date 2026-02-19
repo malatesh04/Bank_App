@@ -1,9 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { getDb, dbGet, dbAll, dbRun, persistDb } = require('../database/db');
+const { getDb, dbGet, dbAll, dbRun, persistDb, isPg } = require('../database/db');
 const { verifyToken } = require('../middleware/auth');
-
-const isPg = () => process.env.NODE_ENV === 'production' && !!process.env.DATABASE_URL;
 
 // ─── GET /api/balance ─────────────────────────────────────────
 router.get('/balance', verifyToken, async (req, res) => {
@@ -43,8 +41,7 @@ router.post('/deposit', verifyToken, async (req, res) => {
         const user = await dbGet(db, 'SELECT * FROM users WHERE id = ?', [userId]);
         if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
 
-        if (isPg()) {
-            // PostgreSQL — no BEGIN/COMMIT needed for single-row ops, use transaction
+        if (isPg) {
             const client = await db.connect();
             try {
                 await client.query('BEGIN');
@@ -63,7 +60,7 @@ router.post('/deposit', verifyToken, async (req, res) => {
                 [userId, userId, depositAmount, 'deposit']);
             db.run('COMMIT');
         }
-        persistDb();
+        persistDb(db);
 
         const updated = await dbGet(db, 'SELECT balance FROM users WHERE id = ?', [userId]);
         const newBalance = parseFloat(updated.balance);
@@ -113,7 +110,7 @@ router.post('/transfer', verifyToken, async (req, res) => {
                 message: `Insufficient balance. Your current balance is ₹${parseFloat(sender.balance).toFixed(2)}.`
             });
 
-        if (isPg()) {
+        if (isPg) {
             const client = await db.connect();
             try {
                 await client.query('BEGIN');
@@ -134,7 +131,7 @@ router.post('/transfer', verifyToken, async (req, res) => {
                 [senderId, receiver.id, transferAmount, 'transfer']);
             db.run('COMMIT');
         }
-        persistDb();
+        persistDb(db);
 
         const updatedSender = await dbGet(db, 'SELECT balance FROM users WHERE id = ?', [senderId]);
         return res.status(200).json({
@@ -163,29 +160,29 @@ router.get('/transactions', verifyToken, async (req, res) => {
             t.type,
             CASE
               WHEN t.type = 'deposit'      THEN 'deposit'
-              WHEN t.sender_id = ${userId} THEN 'debit'
+              WHEN t.sender_id = ? THEN 'debit'
               ELSE                              'credit'
             END AS direction,
             CASE
               WHEN t.type = 'deposit'      THEN u_self.username
-              WHEN t.sender_id = ${userId} THEN r.username
+              WHEN t.sender_id = ? THEN r.username
               ELSE                              s.username
             END AS party_name,
             CASE
               WHEN t.type = 'deposit'      THEN u_self.phone
-              WHEN t.sender_id = ${userId} THEN r.phone
+              WHEN t.sender_id = ? THEN r.phone
               ELSE                              s.phone
             END AS party_phone
           FROM transactions t
           JOIN users s      ON s.id = t.sender_id
           JOIN users r      ON r.id = t.receiver_id
-          JOIN users u_self ON u_self.id = ${userId}
-          WHERE (t.sender_id = ${userId} OR t.receiver_id = ${userId})
+          JOIN users u_self ON u_self.id = ?
+          WHERE (t.sender_id = ? OR t.receiver_id = ?)
           ORDER BY t.timestamp DESC
           LIMIT 30
         `;
 
-        const rows = await dbAll(db, sql);
+        const rows = await dbAll(db, sql, [userId, userId, userId, userId, userId, userId]);
         return res.status(200).json({ success: true, transactions: rows });
     } catch (error) {
         console.error('Transactions error:', error.message);
@@ -213,3 +210,4 @@ router.get('/user', verifyToken, async (req, res) => {
 });
 
 module.exports = router;
+

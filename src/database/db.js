@@ -8,9 +8,8 @@
  *   getDb()                       → db handle
  *   dbGet(db, sql, params)        → first row object | null
  *   dbAll(db, sql, params)        → array of row objects
- *   dbRun(db, sql, params)        → void
- *   persistDb()                   → void (no-op on Postgres)
- *   lastInsertRowid(db)           → number  (SQLite only — Postgres uses RETURNING)
+ *   dbRun(db, sql, params)        → result object (with lastID)
+ *   persistDb(db)                 → void (no-op on Postgres)
  *   generateAccountNumber(db)     → string
  */
 
@@ -21,7 +20,10 @@ const isProd = process.env.NODE_ENV === 'production' && !!process.env.DATABASE_U
 // ═══════════════════════════════════════════════════════
 if (isProd) {
   const { Pool } = require('pg');
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
 
   /** Convert ? placeholders (SQLite style) to $1 $2 … (Postgres style) */
   function toPostgres(sql) {
@@ -29,10 +31,14 @@ if (isProd) {
     return sql.replace(/\?/g, () => `$${++i}`);
   }
 
+  let schemaInitialized = false;
+
   async function getDb() {
+    if (schemaInitialized) return pool;
+
     const client = await pool.connect();
     try {
-      // Create schema (idempotent)
+      await client.query('BEGIN');
       await client.query(`
         CREATE TABLE IF NOT EXISTS users (
           id             SERIAL PRIMARY KEY,
@@ -55,15 +61,22 @@ if (isProd) {
           timestamp   TIMESTAMPTZ DEFAULT NOW()
         )
       `);
+      await client.query('COMMIT');
+      schemaInitialized = true;
       console.log('✅ PostgreSQL schema ready');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error('❌ Postgres Schema Error:', err.message);
+      throw err;
     } finally {
       client.release();
     }
-    return pool; // return pool as db handle
+    return pool;
   }
 
   async function dbRun(db, sql, params) {
-    await db.query(toPostgres(sql), params || []);
+    const res = await db.query(toPostgres(sql), params || []);
+    return { lastID: res.rows[0]?.id || null, rowCount: res.rowCount };
   }
 
   async function dbGet(db, sql, params) {
@@ -76,27 +89,23 @@ if (isProd) {
     return res.rows;
   }
 
-  /** No-op — Postgres persists automatically */
   function persistDb() { }
-
-  /** Not used in Postgres routes — they use RETURNING id directly */
-  function lastInsertRowid() { return null; }
 
   async function generateAccountNumber(db) {
     const BANK_CODE = '4501';
     let acctNum;
     let attempts = 0;
-    do {
-      if (attempts++ > 100) throw new Error('Could not generate unique account number.');
+    while (attempts < 100) {
       const random6 = String(Math.floor(100000 + Math.random() * 900000));
       acctNum = BANK_CODE + random6;
       const row = await dbGet(db, 'SELECT id FROM users WHERE account_number = ?', [acctNum]);
-      if (!row) break;
-    } while (true);
-    return acctNum;
+      if (!row) return acctNum;
+      attempts++;
+    }
+    throw new Error('Could not generate unique account number.');
   }
 
-  module.exports = { getDb, dbRun, dbGet, dbAll, persistDb, lastInsertRowid, generateAccountNumber };
+  module.exports = { getDb, dbRun, dbGet, dbAll, persistDb, generateAccountNumber, isPg: true };
 
 } else {
   // ═══════════════════════════════════════════════════════
@@ -107,9 +116,10 @@ if (isProd) {
   const fs = require('fs');
 
   const DB_PATH = path.join(__dirname, '..', '..', 'bank.db');
-  let db = null;
+  let dbInstance = null;
 
-  function persistDb() {
+  function persistDb(db) {
+    if (!db) return;
     try {
       const data = db.export();
       fs.writeFileSync(DB_PATH, Buffer.from(data));
@@ -119,17 +129,18 @@ if (isProd) {
   }
 
   async function getDb() {
-    if (db) return db;
+    if (dbInstance) return dbInstance;
+
     const SQL = await initSqlJs();
     if (fs.existsSync(DB_PATH)) {
-      db = new SQL.Database(fs.readFileSync(DB_PATH));
+      dbInstance = new SQL.Database(fs.readFileSync(DB_PATH));
       console.log('✅ Loaded existing database from disk');
     } else {
-      db = new SQL.Database();
-      console.log('✅ Created new database');
+      dbInstance = new SQL.Database();
+      console.log('✅ Created new memory database');
     }
 
-    db.run(`
+    dbInstance.run(`
       CREATE TABLE IF NOT EXISTS users (
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
         username       TEXT    NOT NULL,
@@ -141,7 +152,7 @@ if (isProd) {
         created_at     TEXT    DEFAULT (datetime('now'))
       )
     `);
-    db.run(`
+    dbInstance.run(`
       CREATE TABLE IF NOT EXISTS transactions (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         sender_id   INTEGER NOT NULL,
@@ -153,54 +164,54 @@ if (isProd) {
         FOREIGN KEY (receiver_id) REFERENCES users(id)
       )
     `);
-    // Migrations
-    try { db.run(`ALTER TABLE transactions ADD COLUMN type TEXT NOT NULL DEFAULT 'transfer'`); } catch (_) { }
-    try { db.run(`ALTER TABLE users ADD COLUMN account_number TEXT`); } catch (_) { }
 
-    persistDb();
-    console.log('✅ Database schema ready');
-    return db;
+    // Migrations for existing DBs
+    try { dbInstance.run(`ALTER TABLE transactions ADD COLUMN type TEXT NOT NULL DEFAULT 'transfer'`); } catch (_) { }
+    try { dbInstance.run(`ALTER TABLE users ADD COLUMN account_number TEXT`); } catch (_) { }
+
+    persistDb(dbInstance);
+    return dbInstance;
   }
 
-  function dbRun(db, sql, params) { db.run(sql, params || []); }
+  async function dbRun(db, sql, params) {
+    db.run(sql, params || []);
+    const res = db.exec('SELECT last_insert_rowid() AS id');
+    const lastID = res[0]?.values[0][0];
+    return { lastID };
+  }
 
-  function dbGet(db, sql, params) {
+  async function dbGet(db, sql, params) {
     const stmt = db.prepare(sql);
-    if (params && params.length > 0) stmt.bind(params);
+    if (params) stmt.bind(params);
     const hasRow = stmt.step();
-    if (!hasRow) { stmt.free(); return null; }
-    const row = stmt.getAsObject();
+    const row = hasRow ? stmt.getAsObject() : null;
     stmt.free();
     return row;
   }
 
-  function dbAll(db, sql, params) {
+  async function dbAll(db, sql, params) {
     const stmt = db.prepare(sql);
-    if (params && params.length > 0) stmt.bind(params);
+    if (params) stmt.bind(params);
     const rows = [];
     while (stmt.step()) rows.push(stmt.getAsObject());
     stmt.free();
     return rows;
   }
 
-  function lastInsertRowid(db) {
-    const row = dbGet(db, 'SELECT last_insert_rowid() AS id');
-    return row ? row.id : null;
-  }
-
-  function generateAccountNumber(db) {
+  async function generateAccountNumber(db) {
     const BANK_CODE = '4501';
     let acctNum;
     let attempts = 0;
-    do {
-      if (attempts++ > 100) throw new Error('Could not generate unique account number.');
+    while (attempts < 100) {
       const random6 = String(Math.floor(100000 + Math.random() * 900000));
       acctNum = BANK_CODE + random6;
-      const existing = dbGet(db, 'SELECT id FROM users WHERE account_number = ?', [acctNum]);
-      if (!existing) break;
-    } while (true);
-    return acctNum;
+      const row = await dbGet(db, 'SELECT id FROM users WHERE account_number = ?', [acctNum]);
+      if (!row) return acctNum;
+      attempts++;
+    }
+    throw new Error('Could not generate unique account number.');
   }
 
-  module.exports = { getDb, dbRun, dbGet, dbAll, persistDb, lastInsertRowid, generateAccountNumber };
+  module.exports = { getDb, dbRun, dbGet, dbAll, persistDb, generateAccountNumber, isPg: false };
 }
+
