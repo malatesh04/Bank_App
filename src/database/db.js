@@ -13,12 +13,19 @@
  *   generateAccountNumber(db)     → string
  */
 
-const isProd = process.env.NODE_ENV === 'production' && !!process.env.DATABASE_URL;
+const isProd = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
+const hasDbUrl = !!process.env.DATABASE_URL;
+
+if (isProd && !hasDbUrl) {
+  console.warn('⚠️ WARNING: Running in production/Vercel but DATABASE_URL is missing. Falling back to SQLite (non-persistent).');
+}
 
 // ═══════════════════════════════════════════════════════
 //  PRODUCTION — Neon / PostgreSQL
 // ═══════════════════════════════════════════════════════
-if (isProd) {
+if (hasDbUrl) {
+  console.log('🌐 Database Mode: PostgreSQL (Production)');
+
   const { Pool } = require('pg');
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,

@@ -86,6 +86,28 @@ app.use(express.static(path.join(__dirname, 'public'), {
 app.use('/api', authRoutes);
 app.use('/api', bankRoutes);
 
+// ─── Health check for debugging ─────────────────────────────
+app.get('/api/health', async (req, res) => {
+    try {
+        const { getDb, dbGet, isPg } = require('./src/database/db');
+        const db = await getDb();
+        const result = await dbGet(db, 'SELECT 1 as connected');
+        res.json({
+            status: 'ok',
+            database: isPg ? 'PostgreSQL' : 'SQLite',
+            connected: !!result,
+            env: {
+                NODE_ENV: process.env.NODE_ENV,
+                VERCEL: !!process.env.VERCEL,
+                HAS_DB_URL: !!process.env.DATABASE_URL,
+                HAS_JWT: !!process.env.JWT_SECRET
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message, stack: process.env.NODE_ENV === 'production' ? undefined : err.stack });
+    }
+});
+
 // ─── SPA Fallback (serve index.html for all non-API routes) ───────────────
 app.get('*', (req, res) => {
     if (!req.path.startsWith('/api')) {
@@ -98,7 +120,16 @@ app.get('*', (req, res) => {
 // ─── Global Error Handler ──────────────────────────────────────────────────
 app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);
-    res.status(500).json({ success: false, message: 'An unexpected error occurred.' });
+    // Be more descriptive if not in strict production or if it's a known error type
+    const message = (process.env.NODE_ENV !== 'production' || err.expose)
+        ? err.message
+        : 'An unexpected error occurred.';
+
+    res.status(err.status || 500).json({
+        success: false,
+        message: message,
+        error: process.env.NODE_ENV !== 'production' ? err.stack : undefined
+    });
 });
 
 // ─── Start Server (local dev only — Vercel handles this in production) ────
