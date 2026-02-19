@@ -52,8 +52,19 @@ app.use('/api/login', authLimiter);
 app.use('/api/register', authLimiter);
 
 // ─── CORS ──────────────────────────────────────────────────────────────────
+const allowedOrigins = [
+    'http://localhost:3000',
+    'https://bank-app-sandy-pi.vercel.app'
+];
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production' ? false : true,
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, Postman)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+            return callback(null, true);
+        }
+        callback(new Error('CORS: Origin not allowed'));
+    },
     credentials: true
 }));
 
@@ -90,11 +101,14 @@ app.use((err, req, res, next) => {
     res.status(500).json({ success: false, message: 'An unexpected error occurred.' });
 });
 
-// ─── Start Server ──────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-    console.log(`\n🏦 State Bank of Karnataka — API Server running on http://localhost:${PORT}`);
-    console.log(`📊 Dashboard: http://localhost:${PORT}`);
-    console.log(`🔐 Environment: ${process.env.NODE_ENV || 'development'}\n`);
-});
+// ─── Start Server (local dev only — Vercel handles this in production) ────
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => {
+        console.log(`\n🏦 State Bank of Karnataka — API Server running on http://localhost:${PORT}`);
+        console.log(`📊 Dashboard: http://localhost:${PORT}`);
+        console.log(`🔐 Environment: ${process.env.NODE_ENV || 'development'}\n`);
+    });
+}
 
+// Export for Vercel serverless
 module.exports = app;
