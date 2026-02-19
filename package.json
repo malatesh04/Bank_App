@@ -1,0 +1,24 @@
+{
+    "name": "secure-bank-app",
+    "version": "1.0.0",
+    "description": "Secure Banking Web Application with JWT Authentication",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "nodemon server.js"
+    },
+    "dependencies": {
+        "express": "^4.18.2",
+        "sql.js": "^1.11.0",
+        "bcryptjs": "^2.4.3",
+        "jsonwebtoken": "^9.0.2",
+        "cors": "^2.8.5",
+        "dotenv": "^16.4.1",
+        "cookie-parser": "^1.4.6",
+        "express-rate-limit": "^7.1.5",
+        "helmet": "^7.1.0"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.3"
+    }
+}
