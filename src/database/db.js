@@ -3,14 +3,6 @@
  *
  * LOCAL  (development) : sql.js SQLite  → bank.db
  * PRODUCTION (Vercel)  : Neon PostgreSQL → DATABASE_URL env var
- *
- * Exports a unified async interface:
- *   getDb()                       → db handle
- *   dbGet(db, sql, params)        → first row object | null
- *   dbAll(db, sql, params)        → array of row objects
- *   dbRun(db, sql, params)        → result object (with lastID)
- *   persistDb(db)                 → void (no-op on Postgres)
- *   generateAccountNumber(db)     → string
  */
 
 const isProd = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
@@ -118,10 +110,8 @@ if (hasDbUrl) {
   // ═══════════════════════════════════════════════════════
   //  LOCAL — sql.js SQLite
   // ═══════════════════════════════════════════════════════
-  const initSqlJs = require('sql.js');
   const path = require('path');
   const fs = require('fs');
-
   const DB_PATH = path.join(__dirname, '..', '..', 'bank.db');
   let dbInstance = null;
 
@@ -138,7 +128,11 @@ if (hasDbUrl) {
   async function getDb() {
     if (dbInstance) return dbInstance;
 
+    // On Vercel, this will likely fail unless WASM is bundled.
+    // We delay this require until absolutely needed.
+    const initSqlJs = require('sql.js');
     const SQL = await initSqlJs();
+
     if (fs.existsSync(DB_PATH)) {
       dbInstance = new SQL.Database(fs.readFileSync(DB_PATH));
       console.log('✅ Loaded existing database from disk');
@@ -172,7 +166,6 @@ if (hasDbUrl) {
       )
     `);
 
-    // Migrations for existing DBs
     try { dbInstance.run(`ALTER TABLE transactions ADD COLUMN type TEXT NOT NULL DEFAULT 'transfer'`); } catch (_) { }
     try { dbInstance.run(`ALTER TABLE users ADD COLUMN account_number TEXT`); } catch (_) { }
 
@@ -221,4 +214,3 @@ if (hasDbUrl) {
 
   module.exports = { getDb, dbRun, dbGet, dbAll, persistDb, generateAccountNumber, isPg: false };
 }
-

@@ -102,10 +102,13 @@ app.get('/api/health', async (req, res) => {
         // If we don't have a DB URL and we are on Vercel, we know it will likely fail 
         // because of sql.js WASM issues. Let's catch that specifically.
         if (!!process.env.VERCEL && !process.env.DATABASE_URL) {
+            // Log keys of environment variables for debugging (NOT the values)
+            console.warn('Available Env Keys:', Object.keys(process.env).join(', '));
             return res.json({
                 status: 'warning',
                 message: 'Running on Vercel without DATABASE_URL. SQLite fallback will likely fail due to WASM constraints.',
-                env: envData
+                env: envData,
+                availableKeys: Object.keys(process.env).filter(k => !k.includes('SECRET') && !k.includes('KEY') && !k.includes('PASSWORD') && !k.includes('URL'))
             });
         }
 
