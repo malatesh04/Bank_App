@@ -88,23 +88,42 @@ app.use('/api', bankRoutes);
 
 // ─── Health check for debugging ─────────────────────────────
 app.get('/api/health', async (req, res) => {
+    const envData = {
+        NODE_ENV: process.env.NODE_ENV,
+        VERCEL: !!process.env.VERCEL,
+        HAS_DB_URL: !!process.env.DATABASE_URL,
+        HAS_JWT: !!process.env.JWT_SECRET,
+        PORT: process.env.PORT
+    };
+
     try {
         const { getDb, dbGet, isPg } = require('./src/database/db');
+
+        // If we don't have a DB URL and we are on Vercel, we know it will likely fail 
+        // because of sql.js WASM issues. Let's catch that specifically.
+        if (!!process.env.VERCEL && !process.env.DATABASE_URL) {
+            return res.json({
+                status: 'warning',
+                message: 'Running on Vercel without DATABASE_URL. SQLite fallback will likely fail due to WASM constraints.',
+                env: envData
+            });
+        }
+
         const db = await getDb();
         const result = await dbGet(db, 'SELECT 1 as connected');
         res.json({
             status: 'ok',
             database: isPg ? 'PostgreSQL' : 'SQLite',
             connected: !!result,
-            env: {
-                NODE_ENV: process.env.NODE_ENV,
-                VERCEL: !!process.env.VERCEL,
-                HAS_DB_URL: !!process.env.DATABASE_URL,
-                HAS_JWT: !!process.env.JWT_SECRET
-            }
+            env: envData
         });
     } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message, stack: process.env.NODE_ENV === 'production' ? undefined : err.stack });
+        res.status(500).json({
+            status: 'error',
+            message: err.message,
+            env: envData,
+            tip: !process.env.DATABASE_URL ? 'Please add DATABASE_URL to your Vercel Environment Variables.' : 'Check your database credentials.'
+        });
     }
 });
 
