@@ -1,3 +1,4 @@
+require('dotenv').config();
 /**
  * State Bank of Karnataka — Database Layer
  *
@@ -23,6 +24,9 @@ if (hasDbUrl) {
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
   });
+
+  // Force environment to ignore self-signed cert errors for pg
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
   /** Convert ? placeholders (SQLite style) to $1 $2 … (Postgres style) */
   function toPostgres(sql) {
