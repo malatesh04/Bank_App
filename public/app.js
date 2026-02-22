@@ -450,6 +450,7 @@ function doLogout(expired = false) {
     state.transactions = [];
     localStorage.removeItem('sb_token');
     API.post('/logout', {}).catch(() => { });
+    if (typeof setChatbotVisibility === 'function') setChatbotVisibility(false);
     showPage('login');
     clearFormMessages('login-error');
     showToast(
@@ -471,6 +472,7 @@ async function loadDashboard() {
         $('account-phone').textContent = `+91 ${state.user.phone}`;
         if (state.user.accountNumber) setAccountNumber(state.user.accountNumber);
     }
+    if (typeof setChatbotVisibility === 'function') setChatbotVisibility(true);
     await Promise.all([fetchBalance(), fetchTransactions()]);
 }
 

@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Inject Chatbot HTML
     const chatbotHTML = `
-        <div class="chatbot-container">
+        <div class="chatbot-container" id="chatbot-container" style="display: none;">
             <button class="chatbot-toggle" id="chatbot-toggle">
                 <i class="fa-solid fa-comments"></i>
             </button>
@@ -138,4 +138,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function scrollToBottom() {
         messages.scrollTop = messages.scrollHeight;
     }
+
+    // Expose visibility control to app.js
+    window.setChatbotVisibility = (visible) => {
+        const container = document.getElementById('chatbot-container');
+        if (container) {
+            container.style.display = visible ? 'block' : 'none';
+            // Also reset chat window state when hiding
+            if (!visible) {
+                window.classList.remove('active');
+            }
+        }
+    };
 });
