@@ -80,6 +80,7 @@ Visit **http://localhost:3000** in your browser.
 | GET    | `/api/balance`      | ✅   | Get current user balance           |
 | POST   | `/api/deposit`      | ✅   | Add money to account               |
 | POST   | `/api/transfer`     | ✅   | Transfer money to another user     |
+| POST   | `/api/chat`         | ❌   | AI Banking Support Assistant       |
 | GET    | `/api/transactions` | ✅   | Get last 20 transactions           |
 | GET    | `/api/user`         | ✅   | Get user profile                   |
 
@@ -219,3 +220,4 @@ Tests cover (22 total):
 | `JWT_SECRET`| (long secret key) | JWT signing secret    |
 | `JWT_EXPIRY`| `1h`              | Token expiry duration |
 | `NODE_ENV`  | `development`     | Environment mode      |
+| `HF_API_KEY`| (required)        | Hugging Face API Key  |

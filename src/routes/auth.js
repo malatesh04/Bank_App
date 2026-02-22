@@ -68,8 +68,13 @@ router.post('/register', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Register error:', error.message, error.stack);
-        return res.status(500).json({ success: false, message: 'Registration failed. Please try again.' });
+        console.error('❌ Registration Exception:', error.name, error.message);
+        console.error(error.stack);
+        return res.status(500).json({
+            success: false,
+            message: 'Registration failed. Please try again.',
+            error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+        });
     }
 });
 
@@ -112,8 +117,13 @@ router.post('/login', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Login error:', error.message, error.stack);
-        return res.status(500).json({ success: false, message: 'Login failed. Please try again.' });
+        console.error('❌ Login Exception:', error.name, error.message);
+        console.error(error.stack);
+        return res.status(500).json({
+            success: false,
+            message: 'Login failed. Please try again.',
+            error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+        });
     }
 });
 

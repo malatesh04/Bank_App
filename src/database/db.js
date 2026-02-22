@@ -10,8 +10,11 @@ const isProd = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
 const hasDbUrl = !!process.env.DATABASE_URL;
 
 if (isProd && !hasDbUrl) {
-  console.warn('⚠️ WARNING: Running in production/Vercel but DATABASE_URL is missing. Falling back to SQLite (non-persistent).');
+  const errorMsg = '❌ FATAL ERROR: Running on Vercel but DATABASE_URL is missing. SQLite fallback is not supported in serverless environments. Please add DATABASE_URL to your Vercel Project Settings.';
+  console.error(errorMsg);
+  // We don't throw immediately to allow the health check route to report this gracefully
 }
+
 
 // ═══════════════════════════════════════════════════════
 //  PRODUCTION — Neon / PostgreSQL
@@ -34,47 +37,51 @@ if (hasDbUrl) {
     return sql.replace(/\?/g, () => `$${++i}`);
   }
 
-  let schemaInitialized = false;
+  let initializationPromise = null;
 
   async function getDb() {
-    if (schemaInitialized) return pool;
+    if (initializationPromise) return initializationPromise;
 
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS users (
-          id             SERIAL PRIMARY KEY,
-          username       TEXT    NOT NULL,
-          phone          TEXT    UNIQUE NOT NULL,
-          password       TEXT    NOT NULL,
-          balance        NUMERIC(15,2) NOT NULL DEFAULT 0.00,
-          account_number TEXT    UNIQUE,
-          jwt_token      TEXT,
-          created_at     TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS transactions (
-          id          SERIAL PRIMARY KEY,
-          sender_id   INTEGER NOT NULL REFERENCES users(id),
-          receiver_id INTEGER NOT NULL REFERENCES users(id),
-          amount      NUMERIC(15,2) NOT NULL,
-          type        TEXT NOT NULL DEFAULT 'transfer',
-          timestamp   TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-      await client.query('COMMIT');
-      schemaInitialized = true;
-      console.log('✅ PostgreSQL schema ready');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      console.error('❌ Postgres Schema Error:', err.message);
-      throw err;
-    } finally {
-      client.release();
-    }
-    return pool;
+    initializationPromise = (async () => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS users (
+            id             SERIAL PRIMARY KEY,
+            username       TEXT    NOT NULL,
+            phone          TEXT    UNIQUE NOT NULL,
+            password       TEXT    NOT NULL,
+            balance        NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+            account_number TEXT    UNIQUE,
+            jwt_token      TEXT,
+            created_at     TIMESTAMPTZ DEFAULT NOW()
+          )
+        `);
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS transactions (
+            id          SERIAL PRIMARY KEY,
+            sender_id   INTEGER NOT NULL REFERENCES users(id),
+            receiver_id INTEGER NOT NULL REFERENCES users(id),
+            amount      NUMERIC(15,2) NOT NULL,
+            type        TEXT NOT NULL DEFAULT 'transfer',
+            timestamp   TIMESTAMPTZ DEFAULT NOW()
+          )
+        `);
+        await client.query('COMMIT');
+        console.log('✅ PostgreSQL schema ready');
+        return pool;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('❌ Postgres Schema Error:', err.message);
+        initializationPromise = null; // Allow retry
+        throw err;
+      } finally {
+        client.release();
+      }
+    })();
+
+    return initializationPromise;
   }
 
   async function dbRun(db, sql, params) {
