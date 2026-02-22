@@ -1,7 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Inject Chatbot HTML
+    const isHiddenByBody = document.body.classList.contains('hide-chatbot');
     const chatbotHTML = `
-        <div class="chatbot-container" id="chatbot-container" style="display: none;">
+        <div class="chatbot-container" id="chatbot-container" style="display: ${isHiddenByBody ? 'none' : 'block'};">
             <button class="chatbot-toggle" id="chatbot-toggle">
                 <i class="fa-solid fa-comments"></i>
             </button>
@@ -36,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.insertAdjacentHTML('beforeend', chatbotHTML);
 
     const toggle = document.getElementById('chatbot-toggle');
-    const window = document.getElementById('chatbot-window');
+    const chatbotWindow = document.getElementById('chatbot-window');
     const closeBtn = document.getElementById('close-chat');
     const form = document.getElementById('chatbot-form');
     const input = document.getElementById('chatbot-input');
@@ -46,14 +47,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Toggle Window
     toggle.addEventListener('click', () => {
-        window.classList.toggle('active');
-        if (window.classList.contains('active')) {
+        chatbotWindow.classList.toggle('active');
+        if (chatbotWindow.classList.contains('active')) {
             input.focus();
         }
     });
 
     closeBtn.addEventListener('click', () => {
-        window.classList.remove('active');
+        chatbotWindow.classList.remove('active');
     });
 
     // Handle Chip Clicks
@@ -139,14 +140,17 @@ document.addEventListener('DOMContentLoaded', () => {
         messages.scrollTop = messages.scrollHeight;
     }
 
+    let isGloballyVisible = false;
+
     // Expose visibility control to app.js
     window.setChatbotVisibility = (visible) => {
+        isGloballyVisible = visible;
         const container = document.getElementById('chatbot-container');
         if (container) {
             container.style.display = visible ? 'block' : 'none';
             // Also reset chat window state when hiding
             if (!visible) {
-                window.classList.remove('active');
+                chatbotWindow.classList.remove('active');
             }
         }
     };

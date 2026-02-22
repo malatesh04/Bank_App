@@ -58,7 +58,10 @@ router.post('/chat', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Message too long (max 500 characters).' });
         }
 
-        if (!HF_API_KEY) {
+        const currentApiKey = process.env.HF_API_KEY;
+
+        if (!currentApiKey) {
+            console.error('Chat Error: HF_API_KEY is missing in process.env');
             return res.status(500).json({
                 success: false,
                 message: 'Missing Hugging Face API key configuration.'
@@ -94,7 +97,7 @@ router.post('/chat', async (req, res) => {
         const response = await fetch(API_URL, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${HF_API_KEY}`,
+                'Authorization': `Bearer ${currentApiKey}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload)

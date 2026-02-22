@@ -16,6 +16,10 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+body.hide-chatbot .chatbot-container {
+    display: none !important;
+}
+
 .chatbot-toggle {
     width: 60px;
     height: 60px;

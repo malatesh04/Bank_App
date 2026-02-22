@@ -173,6 +173,15 @@ function showPage(pageId) {
     const page = $(`page-${pageId}`);
     if (page) page.classList.add('active');
     window.scrollTo(0, 0);
+
+    // Dynamic Chatbot Visibility: Show on dashboard, hide on Auth pages
+    const isAuthPage = pageId === 'login' || pageId === 'register';
+    if (typeof setChatbotVisibility === 'function') {
+        setChatbotVisibility(!isAuthPage);
+    } else {
+        // Safety: If script hasn't loaded yet, set a style on body
+        document.body.classList.toggle('hide-chatbot', isAuthPage);
+    }
 }
 
 // ─── Modal helpers ──────────────────────────────────────────────
@@ -472,7 +481,6 @@ async function loadDashboard() {
         $('account-phone').textContent = `+91 ${state.user.phone}`;
         if (state.user.accountNumber) setAccountNumber(state.user.accountNumber);
     }
-    if (typeof setChatbotVisibility === 'function') setChatbotVisibility(true);
     await Promise.all([fetchBalance(), fetchTransactions()]);
 }
 
