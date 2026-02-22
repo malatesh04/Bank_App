@@ -101,6 +101,7 @@ app.get('/api/health', async (req, res) => {
         HAS_DB_URL: !!process.env.DATABASE_URL,
         HAS_JWT: !!process.env.JWT_SECRET,
         PORT: process.env.PORT,
+        HAS_HF_KEY: !!process.env.HF_API_KEY,
         PROJECT: process.env.VERCEL_PROJECT_NAME,
         ID: process.env.VERCEL_DEPLOYMENT_ID
     };
